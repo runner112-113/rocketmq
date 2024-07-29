@@ -16,7 +16,9 @@
  */
 package org.apache.rocketmq.common.namesrv;
 
-
+/**
+ * 动态解析 NameServer 地址的机制
+ */
 public interface TopAddressing {
 
     String fetchNSAddr();

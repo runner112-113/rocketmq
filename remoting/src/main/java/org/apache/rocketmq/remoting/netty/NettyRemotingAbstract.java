@@ -551,6 +551,7 @@ public abstract class NettyRemotingAbstract {
                     }
                 }, once);
             responseFutureReference.set(responseFuture);
+            // 添加到客户端未完成请求
             this.responseTable.put(opaque, responseFuture);
             try {
                 channel.writeAndFlush(request).addListener((ChannelFutureListener) f -> {

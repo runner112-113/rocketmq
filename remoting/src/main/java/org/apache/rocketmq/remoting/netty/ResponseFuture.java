@@ -67,10 +67,13 @@ public class ResponseFuture {
                     invokeCallback.operationSucceed(response);
                 } else {
                     if (!isSendRequestOK()) {
+                        // 发送失败处理
                         invokeCallback.operationFail(new RemotingSendRequestException(channel.remoteAddress().toString(), getCause()));
                     } else if (isTimeout()) {
+                        // 超时处理
                         invokeCallback.operationFail(new RemotingTimeoutException(channel.remoteAddress().toString(), getTimeoutMillis(), getCause()));
                     } else {
+                        // 其他情况
                         invokeCallback.operationFail(new RemotingException(getRequestCommand().toString(), getCause()));
                     }
                 }
