@@ -24,7 +24,7 @@ public interface LatencyFaultTolerance<T> {
      * @param name Broker's name.
      * @param currentLatency Current message sending process's latency.
      * @param notAvailableDuration Corresponding not available time, ms. The broker will be not available until it
-     * spends such time.
+     * spends such time.  不可用持续时长，在这个时间内，Broker将被规避。
      * @param reachable To decide if this broker is reachable or not.
      */
     void updateFaultItem(final T name, final long currentLatency, final long notAvailableDuration,
@@ -35,6 +35,8 @@ public interface LatencyFaultTolerance<T> {
      *
      * @param name Broker's name.
      * @return boolean variable, if this is true, then the broker is available.
+     *
+     * 判断Broker是否可用
      */
     boolean isAvailable(final T name);
 
@@ -50,6 +52,8 @@ public interface LatencyFaultTolerance<T> {
      * Remove the broker in this fault item table.
      *
      * @param name broker's name.
+     *
+     * 移除失败条目，意味着Broker重新参与路由计算
      */
     void remove(final T name);
 
@@ -57,6 +61,8 @@ public interface LatencyFaultTolerance<T> {
      * The worst situation, no broker can be available. Then choose random one.
      *
      * @return A random mq will be returned.
+     *
+     * 尝试从规避的Broker中选择一个可用的Broker，如果没有找到，则返回null
      */
     T pickOneAtLeast();
 

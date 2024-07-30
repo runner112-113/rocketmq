@@ -193,9 +193,15 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         this.detectInterval = detectInterval;
     }
 
+    /**
+     * 失败条目（规避规则条目）
+     */
     public class FaultItem implements Comparable<FaultItem> {
+        // 条目唯一键，这里为brokerName。
         private final String name;
+        // 本次消息发送的延迟时间
         private volatile long currentLatency;
+        // 故障规避的开始时间
         private volatile long startTimestamp;
         private volatile long checkStamp;
         private volatile boolean reachableFlag;

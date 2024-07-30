@@ -31,9 +31,13 @@ import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 import org.apache.rocketmq.remoting.protocol.statictopic.TopicQueueMappingInfo;
 
 public class TopicRouteData extends RemotingSerializable {
+    // 顺序消息配置内容，来自kvConfig
     private String orderTopicConf;
+    // topic队列元数据
     private List<QueueData> queueDatas;
+    // topic分布的broker元数据
     private List<BrokerData> brokerDatas;
+    // Broker上过滤服务器的地址列表
     private HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
     //It could be null or empty
     private Map<String/*brokerName*/, TopicQueueMappingInfo> topicQueueMappingByBroker;

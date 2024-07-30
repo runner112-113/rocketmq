@@ -36,9 +36,13 @@ public class TopicConfig {
     private String topicName;
     private int readQueueNums = defaultReadQueueNums;
     private int writeQueueNums = defaultWriteQueueNums;
+    // 权限码
     private int perm = PermName.PERM_READ | PermName.PERM_WRITE;
+    // 主题过滤方式，默认SINGLE_TAG
     private TopicFilterType topicFilterType = TopicFilterType.SINGLE_TAG;
+    // topic Flag，当前版本暂为保留
     private int topicSysFlag = 0;
+    // 是否是顺序消息
     private boolean order = false;
     // Field attributes should not have ' ' char in key or value, otherwise will lead to decode failure.
     private Map<String, String> attributes = new HashMap<>();

@@ -754,6 +754,7 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         final DefaultMQProducerImpl producer
     ) {
         int tmp = curTimes.incrementAndGet();
+        // 异步发送的重试（重试的调用入口是在收到服务端响应包时进行的，如果出现网络异常、网络超时等情况将不会重试）
         if (needRetry && tmp <= timesTotal) {
             String retryBrokerName = brokerName;//by default, it will send to the same broker
             if (topicPublishInfo != null) { //select one message queue accordingly, in order to determine which broker to send

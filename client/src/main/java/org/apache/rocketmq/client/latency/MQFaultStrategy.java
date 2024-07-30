@@ -22,8 +22,16 @@ import org.apache.rocketmq.client.impl.producer.TopicPublishInfo;
 import org.apache.rocketmq.client.impl.producer.TopicPublishInfo.QueueFilter;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * 消息失败策略，延迟实现的门面类
+ *
+ *
+ * 根据currentLatency本次消息发送的延迟时间，从latencyMax尾部向前找到第一个比currentLatency小的索引index，如果没有找到，则返回0。
+ * 然后根据这个索引从notAvailable-Duration数组中取出对应的时间，在这个时长内，Broker将设置为不可用。
+ */
 public class MQFaultStrategy {
     private LatencyFaultTolerance<String> latencyFaultTolerance;
+    // 是否启用Broker故障延迟机制， 默认不启用
     private volatile boolean sendLatencyFaultEnable;
     private volatile boolean startDetectorEnable;
     private long[] latencyMax = {50L, 100L, 550L, 1800L, 3000L, 5000L, 15000L};
@@ -56,6 +64,7 @@ public class MQFaultStrategy {
         }
     };
 
+    // 验证该消息队列是否可用
     private QueueFilter availableFilter = new QueueFilter() {
         @Override public boolean filter(MessageQueue mq) {
             return latencyFaultTolerance.isAvailable(mq.getBrokerName());
@@ -135,12 +144,14 @@ public class MQFaultStrategy {
     }
 
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName, final boolean resetIndex) {
+        // 当第一次的brokerName发送失败后，下次会切换成另一个
         BrokerFilter brokerFilter = threadBrokerFilter.get();
         brokerFilter.setLastBrokerName(lastBrokerName);
         if (this.sendLatencyFaultEnable) {
             if (resetIndex) {
                 tpInfo.resetIndex();
             }
+            // availableFilter验证该消息队列是否可用
             MessageQueue mq = tpInfo.selectOneMessageQueue(availableFilter, brokerFilter);
             if (mq != null) {
                 return mq;
@@ -164,11 +175,17 @@ public class MQFaultStrategy {
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation,
                                 final boolean reachable) {
         if (this.sendLatencyFaultEnable) {
+            // 计算设置Broker不可用的时间
             long duration = computeNotAvailableDuration(isolation ? 10000 : currentLatency);
             this.latencyFaultTolerance.updateFaultItem(brokerName, currentLatency, duration, reachable);
         }
     }
 
+    /**
+     * computeNotAvailableDuration的作用是计算因本次消息发送故障
+     * 需要规避Broker的时长，也就是接下来多长的时间内，该Broker将不
+     * 参与消息发送队列负载。
+     */
     private long computeNotAvailableDuration(final long currentLatency) {
         for (int i = latencyMax.length - 1; i >= 0; i--) {
             if (currentLatency >= latencyMax[i]) {

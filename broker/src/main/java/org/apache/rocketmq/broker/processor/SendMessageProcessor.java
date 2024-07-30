@@ -245,6 +245,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final TopicQueueMappingContext mappingContext,
         final SendMessageCallback sendMessageCallback) throws RemotingCommandException {
 
+        // step1：检查消息发送是否合理
         final RemotingCommand response = preSend(ctx, request, requestHeader);
         if (response.getCode() != -1) {
             return response;
@@ -265,6 +266,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         msgInner.setTopic(requestHeader.getTopic());
         msgInner.setQueueId(queueIdInt);
 
+        // step2:如果消息重试次数超过允许的最大重试次数，消息将进入DLQ死信队列。死信队列主题为%DLQ%+消费组名
         Map<String, String> oriProps = MessageDecoder.string2messageProperties(requestHeader.getProperties());
         if (!handleRetryAndDLQ(requestHeader, response, request, msgInner, topicConfig, oriProps)) {
             return response;
@@ -319,6 +321,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         long beginTimeMillis = this.brokerController.getMessageStore().now();
 
+        // 调用DefaultMessageStore#putMessage进行消息存储
         if (brokerController.getBrokerConfig().isAsyncSendEnable()) {
             CompletableFuture<PutMessageResult> asyncPutMessageFuture;
             if (sendTransactionPrepareMessage) {
@@ -692,6 +695,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         }
 
         response.setCode(-1);
+        // 检查消息发送是否合理
         super.msgCheck(ctx, requestHeader, request, response);
 
         return response;

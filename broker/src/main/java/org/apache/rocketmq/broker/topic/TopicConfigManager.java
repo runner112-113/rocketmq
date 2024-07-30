@@ -93,6 +93,7 @@ public class TopicConfigManager extends ConfigManager {
             putTopicConfig(topicConfig);
         }
         {
+            // 允许自动创建topic，则创建TWB102默认主题
             if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
                 String topic = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
                 TopicConfig topicConfig = new TopicConfig(topic);

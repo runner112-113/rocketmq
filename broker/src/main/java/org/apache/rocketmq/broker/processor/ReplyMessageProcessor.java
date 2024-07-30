@@ -123,6 +123,8 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor {
         }
 
         response.setCode(-1);
+        // 此处 对于服务端没有的topic被路由过来了 会进行自动创建topic,
+        // 并且最终会通过心跳的方式同步到nameserver中
         super.msgCheck(ctx, requestHeader, request, response);
         if (response.getCode() != -1) {
             return response;

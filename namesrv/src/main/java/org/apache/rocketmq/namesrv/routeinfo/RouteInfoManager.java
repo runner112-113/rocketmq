@@ -69,10 +69,16 @@ public class RouteInfoManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private static final long DEFAULT_BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Map<String/* topic */, Map<String, QueueData>> topicQueueTable;
+    // 消息队列路由信息 （topic下对应的MessageQueue情况）
+    private final Map<String/* topic */, Map<String/* brokerName */, QueueData>> topicQueueTable;
+    // Broker基础信息，包含brokerName、所属集群名称、主备Broker地址
     private final Map<String/* brokerName */, BrokerData> brokerAddrTable;
+    // 集群信息
+    // 存储集群和 Broker 分组信息，每个集群下可以对应多个 Broker 分组，假如有多个业务，需要进行 Broker 级别的隔离，那就可以定义不同的集群
     private final Map<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+    // broker心跳状态
     private final Map<BrokerAddrInfo/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
+    // Broker上的FilterServer列表，用于类模式消息过滤。类模式过滤机制在4.4及以后版本被废弃
     private final Map<BrokerAddrInfo/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
     private final Map<String/* topic */, Map<String/*brokerName*/, TopicQueueMappingInfo>> topicQueueMappingInfoTable;
 
@@ -305,6 +311,11 @@ public class RouteInfoManager {
             boolean isPrimeSlave = !isOldVersionBroker && !isMaster
                 && brokerId == Collections.min(brokerAddrsMap.keySet());
 
+            /**
+             * 如果Broker为主节点，并且Broker的topic配置信息发生变化或者是初次注册，则需要创建或更新topic路由元数据，并填充
+             * topicQueueTable，其实就是为默认主题自动注册路由信息，其中包含MixAll.DEFAULT_TOPIC的路由信息。当消息生产者发送主题时，
+             * 如果该主题未创建，并且BrokerConfig的autoCreateTopicEnable为true，则返回MixAll.DEFAULT_TOPIC的路由信息，
+             */
             if (null != topicConfigWrapper && (isMaster || isPrimeSlave)) {
 
                 ConcurrentMap<String, TopicConfig> tcTable =
@@ -363,6 +374,9 @@ public class RouteInfoManager {
                 }
             }
 
+            /**
+             * 更新BrokerLiveInfo，存储状态正常的Broker信息表，BrokeLiveInfo是执行路由删除操作的重要依据
+             */
             BrokerAddrInfo brokerAddrInfo = new BrokerAddrInfo(clusterName, brokerAddr);
             BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddrInfo,
                 new BrokerLiveInfo(
@@ -375,6 +389,10 @@ public class RouteInfoManager {
                 log.info("new broker registered, {} HAService: {}", brokerAddrInfo, haServerAddr);
             }
 
+            /**
+             * 注册Broker的过滤器Server地址列表，一个Broker上会关联多个FilterServer消息过滤服务器，
+             * 如果此Broker为从节点，则需要查找该Broker的主节点信息，并更新对应的masterAddr属性
+             */
             if (filterServerList != null) {
                 if (filterServerList.isEmpty()) {
                     this.filterServerTable.remove(brokerAddrInfo);
@@ -574,6 +592,7 @@ public class RouteInfoManager {
             Set<String> reducedBroker = new HashSet<>();
             Map<String, BrokerStatusChangeInfo> needNotifyBrokerMap = new HashMap<>();
 
+            // 写锁
             this.lock.writeLock().lockInterruptibly();
             for (final UnRegisterBrokerRequestHeader unRegisterRequest : unRegisterRequests) {
                 final String brokerName = unRegisterRequest.getBrokerName();
@@ -603,6 +622,7 @@ public class RouteInfoManager {
                         removed ? "OK" : "Failed",
                         brokerAddrInfo
                     );
+                    // 如果brokerAddrs空了 则移除这个brokerName（主从集群）
                     if (brokerData.getBrokerAddrs().isEmpty()) {
                         this.brokerAddrTable.remove(brokerName);
                         log.info("unregisterBroker, remove name from brokerAddrTable OK, {}",
@@ -624,6 +644,7 @@ public class RouteInfoManager {
                             removed ? "OK" : "Failed",
                             brokerName);
 
+                        // 如果集群空了 要清掉当前的集群cluster
                         if (nameSet.isEmpty()) {
                             this.clusterAddrTable.remove(clusterName);
                             log.info("unregisterBroker, remove cluster from clusterAddrTable {}",
@@ -664,6 +685,7 @@ public class RouteInfoManager {
                 }
             }
 
+            // 如果Map<String, QueueData>空了 则清除topic
             if (queueDataMap.isEmpty()) {
                 log.debug("removeTopicByBrokerName, remove the topic all queue {}", topic);
                 itMap.remove();

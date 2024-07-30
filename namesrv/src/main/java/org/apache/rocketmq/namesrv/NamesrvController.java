@@ -114,9 +114,11 @@ public class NamesrvController {
     }
 
     private void startScheduleService() {
+        // NameServer每隔5s扫描一次Broker，移除处于未激活状态的Broker
         this.scanExecutorService.scheduleAtFixedRate(NamesrvController.this.routeInfoManager::scanNotActiveBroker,
             5, this.namesrvConfig.getScanNotActiveBrokerInterval(), TimeUnit.MILLISECONDS);
 
+        // NameServer每隔10min打印一次KV配置
         this.scheduledExecutorService.scheduleAtFixedRate(NamesrvController.this.kvConfigManager::printAllPeriodically,
             1, 10, TimeUnit.MINUTES);
 

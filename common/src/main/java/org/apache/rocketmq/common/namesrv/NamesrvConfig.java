@@ -25,11 +25,15 @@ import org.apache.rocketmq.common.MixAll;
 
 public class NamesrvConfig {
 
+    // RocketMQ主目录，通过-Drocketmq.home.dir=path或设置环境变量ROCKETMQ_HOME可以配置RocketMQ的主目录
     private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));
+    // NameServer存储KV配置属性的持久化路径
     private String kvConfigPath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "kvConfig.json";
+    // NameServer默认配置文件路径。NameServer启动时如果要通过配置文件配置NameServer启动属性，请使用-c选项
     private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
     private String productEnvName = "center";
     private boolean clusterTest = false;
+    // 是否支持顺序消息，默认是不支持
     private boolean orderMessageEnable = false;
     private boolean returnOrderTopicConfigToBroker = true;
 
