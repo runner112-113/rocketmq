@@ -293,6 +293,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                             msg.getQueueId(), msg.getQueueOffset());
                         continue;
                     }
+                    // RECONSUME_LATER
                     boolean result = this.sendMessageBack(msg, context);
                     if (!result) {
                         msg.setReconsumeTimes(msg.getReconsumeTimes() + 1);
@@ -303,6 +304,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 if (!msgBackFailed.isEmpty()) {
                     consumeRequest.getMsgs().removeAll(msgBackFailed);
 
+                    // 如果发送ACK消息失败，将延迟5s后提交线程池进行消费
                     this.submitConsumeRequestLater(msgBackFailed, consumeRequest.getProcessQueue(), consumeRequest.getMessageQueue());
                 }
                 break;
@@ -310,7 +312,10 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 break;
         }
 
-        // 移除成功消费的消息
+        // 移除成功消费的消息,这里返回的偏移量是移除该批消息后最小的偏移量
+        // 当消息监听器返回RECONSUME_LATER时，消息消费进度也会向前推进，并用ProcessQueue中最小的队列偏移量调用消息消费进度存储器OffsetStore更新消费进度。
+        // 这是因为当返回RECONSUME_LATER时，RocketMQ会创建一条与原消息属性相同的消息，拥有一个唯一的新msgId，并存储原消息ID，该消息会存入CommitLog文件，
+        // 与原消息没有任何关联，所以该消息也会进入ConsuemeQueue，并拥有一个全新的队列偏移量。
         long offset = consumeRequest.getProcessQueue().removeMessage(consumeRequest.getMsgs());
         // 更新消费位移
         if (offset >= 0 && !consumeRequest.getProcessQueue().isDropped()) {
