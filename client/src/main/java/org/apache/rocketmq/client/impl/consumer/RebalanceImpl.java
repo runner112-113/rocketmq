@@ -323,6 +323,7 @@ public abstract class RebalanceImpl {
             }
             case CLUSTERING: {
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 发送请求从Broker中获取该消费组内当前所有的消费者客户端ID
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -339,6 +340,7 @@ public abstract class RebalanceImpl {
                     List<MessageQueue> mqAll = new ArrayList<>();
                     mqAll.addAll(mqSet);
 
+                    // 对cidAll、mqAll进行排序。确保同一个消费组内看到的视图应保持一致，确保同一个消费队列不会被多个消费者分配。
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
 
@@ -476,6 +478,11 @@ public abstract class RebalanceImpl {
         }
     }
 
+    /**
+     * 遍历当前负载队列集合，如果队列不在新分配队列的集合中，需要将该队列停止消费并保存消费进度；
+     * 遍历已分配的队列，如果队列不在队列负载表中（processQueueTable），则需要创建该队列拉取任务PullRequest，
+     * 然后添加到PullMessageService线程的pullRequestQueue中，PullMessageService才会继续拉取任务，
+     */
     private boolean updateProcessQueueTableInRebalance(final String topic, final Set<MessageQueue> mqSet,
         final boolean isOrder) {
         boolean changed = false;

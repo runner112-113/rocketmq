@@ -114,8 +114,10 @@ public class BrokerConfig extends BrokerIdentity {
     private int adminBrokerThreadPoolQueueCapacity = 10000;
     private int loadBalanceThreadPoolQueueCapacity = 100000;
 
+    // 是否开启长轮询，默认为true
     private boolean longPollingEnable = true;
 
+    // 短轮询为1s
     private long shortPollingTimeMills = 1000;
 
     private boolean notifyConsumerIdsChangedEnable = true;

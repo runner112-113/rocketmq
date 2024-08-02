@@ -68,6 +68,8 @@ import sun.nio.ch.DirectBuffer;
 
 /**
  * Store all metadata downtime for recovery, data protection reliability
+ *
+ * 消息存储，所有消息主题的消息都存储在CommitLog文件中
  */
 public class CommitLog implements Swappable {
     // Message's MAGIC CODE daa320a7
@@ -938,8 +940,10 @@ public class CommitLog implements Swappable {
         String topicQueueKey = generateKey(putMessageThreadLocal.getKeyBuilder(), msg);
         long elapsedTimeInLock = 0;
         MappedFile unlockMappedFile = null;
+        // 获取待写入的CommitLog文件
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
+        // commitLog文件当前可写的位置
         long currOffset;
         if (mappedFile == null) {
             currOffset = 0;
@@ -987,6 +991,7 @@ public class CommitLog implements Swappable {
             msg.setEncodedBuff(putMessageThreadLocal.getEncoder().getEncoderBuffer());
             PutMessageContext putMessageContext = new PutMessageContext(topicQueueKey);
 
+            // 在将消息写入CommitLog之前，先申请putMessageLock
             putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
             try {
                 long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
@@ -1050,6 +1055,7 @@ public class CommitLog implements Swappable {
                 putMessageLock.unlock();
             }
             // Increase queue offset when messages are successfully written
+            // 增加consumeQueue的值
             if (AppendMessageStatus.PUT_OK.equals(result.getStatus())) {
                 this.defaultMessageStore.increaseOffset(msg, getMessageNum(msg));
             }
@@ -1175,6 +1181,10 @@ public class CommitLog implements Swappable {
                     return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPPED_FILE_FAILED, null));
                 }
 
+                /**
+                 * {@link DefaultAppendMessageCallback#doAppend}只是将消息追加到内存中，需要根据采取的是同步刷盘方式还是异步刷盘方式，
+                 * 将内存中的数据持久化到磁盘中，然后执行HA主从同步复制
+                 */
                 result = mappedFile.appendMessages(messageExtBatch, this.appendMessageCallback, putMessageContext);
                 switch (result.getStatus()) {
                     case PUT_OK:
@@ -1207,6 +1217,7 @@ public class CommitLog implements Swappable {
                 elapsedTimeInLock = this.defaultMessageStore.getSystemClock().now() - beginLockTimestamp;
                 beginTimeInLock = 0;
             } finally {
+                // 处理完消息追加逻辑后将释放putMessageLock
                 putMessageLock.unlock();
             }
 
@@ -1234,6 +1245,7 @@ public class CommitLog implements Swappable {
         storeStatsService.getSinglePutMessageTopicTimesTotal(messageExtBatch.getTopic()).add(result.getMsgNum());
         storeStatsService.getSinglePutMessageTopicSizeTotal(messageExtBatch.getTopic()).add(result.getWroteBytes());
 
+        // 处理刷盘和主从复制
         return handleDiskFlushAndHA(putMessageResult, messageExtBatch, needAckNums, needHandleHA);
     }
 
@@ -1348,6 +1360,7 @@ public class CommitLog implements Swappable {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, offset == 0);
         if (mappedFile != null) {
+            // 在当前MappedFile的相对位移
             int pos = (int) (offset % mappedFileSize);
             SelectMappedBufferResult selectMappedBufferResult = mappedFile.selectMappedBuffer(pos, size);
             if (null != selectMappedBufferResult) {
@@ -1358,6 +1371,11 @@ public class CommitLog implements Swappable {
         return null;
     }
 
+    /**
+     * 下一个文件的起始offset
+     * @param offset
+     * @return
+     */
     public long rollNextFile(final long offset) {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
         return offset + mappedFileSize - offset % mappedFileSize;
@@ -1948,6 +1966,7 @@ public class CommitLog implements Swappable {
             }
 
             // Determines whether there is sufficient free space
+            // 消息的长度+结束符 > 文件剩余的可写长度
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                 this.msgStoreItemMemory.clear();
                 // 1 TOTALSIZE
@@ -1964,16 +1983,24 @@ public class CommitLog implements Swappable {
                     queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
             }
 
+            // 1）TOTALSIZE：消息条目总长度，4字节。
+            // 2）MAGICCODE：魔数，4字节。固定值0xdaa320a7。
+            // 3）BODYCRC：消息体的crc校验码，4字节。
+            // 4）QUEUEID：消息消费队列ID，4字节。
+            // 5）FLAG：消息标记，RocketMQ对其不做处理，供应用程序使用，默认4字节。
             int pos = 4 + 4 + 4 + 4 + 4;
-            // 6 QUEUEOFFSET
+            // 6 QUEUEOFFSET  消息在ConsumeQuene文件中的物理偏移量，8字节
             preEncodeBuffer.putLong(pos, queueOffset);
             pos += 8;
-            // 7 PHYSICALOFFSET
+            // 7 PHYSICALOFFSET   消息在CommitLog文件中的物理偏移量，8字节
             preEncodeBuffer.putLong(pos, fileFromOffset + byteBuffer.position());
             int ipLen = (msgInner.getSysFlag() & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 4 + 4 : 16 + 4;
-            // 8 SYSFLAG, 9 BORNTIMESTAMP, 10 BORNHOST, 11 STORETIMESTAMP
+            // 8 SYSFLAG, 消息系统标记，例如是否压缩、是否是事务消息等，4字节。
+            // 9 BORNTIMESTAMP,  消息生产者调用消息发送API的时间戳，8字节
+            // 10 BORNHOST, 消息发送者IP、端口号，8字节或20字节
             pos += 8 + 4 + 8 + ipLen;
             // refresh store time stamp in lock
+            // 11 STORETIMESTAMP 消息存储时间戳，8字节
             preEncodeBuffer.putLong(pos, msgInner.getStoreTimestamp());
             if (enabledAppendPropCRC) {
                 // 18 CRC32
@@ -2017,6 +2044,7 @@ public class CommitLog implements Swappable {
             int sysFlag = messageExtBatch.getSysFlag();
             int bornHostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 4 + 4 : 16 + 4;
             int storeHostLength = (sysFlag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 4 + 4 : 16 + 4;
+            // 消息id构建器
             Supplier<String> msgIdSupplier = () -> {
                 int msgIdLen = storeHostLength + 8;
                 int batchCount = putMessageContext.getBatchSize();
@@ -2046,11 +2074,16 @@ public class CommitLog implements Swappable {
 
                 totalMsgLen += msgLen;
                 // Determines whether there is sufficient free space
+                /**
+                 * 如果消息长度+END_FILE_MIN_BLANK_LENGTH大于CommitLog文件的空闲空间，则返回AppendMessageStatus.END_OF_FILE，
+                 * Broker会创建一个新的CommitLog文件来存储该消息。从这里可以看出，每个CommitLog文件最少空闲8字节，
+                 * 高4字节存储当前文件的剩余空间，低4字节存储魔数CommitLog.BLANK_MAGIC_CODE，
+                 */
                 if ((totalMsgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                     this.msgStoreItemMemory.clear();
-                    // 1 TOTALSIZE
+                    // 1 TOTALSIZE 消息条目总长度，4字节
                     this.msgStoreItemMemory.putInt(maxBlank);
-                    // 2 MAGICCODE
+                    // 2 MAGICCODE 魔数，4字节。固定值cbd43194
                     this.msgStoreItemMemory.putInt(CommitLog.BLANK_MAGIC_CODE);
                     // 3 The remaining space may be any value
                     //ignore previous read
@@ -2061,10 +2094,17 @@ public class CommitLog implements Swappable {
                     return new AppendMessageResult(AppendMessageStatus.END_OF_FILE, wroteOffset, maxBlank, msgIdSupplier, messageExtBatch.getStoreTimestamp(),
                         beginQueueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
                 }
+
+                /**
+                 * 将消息内容存储到ByteBuffer中，然后创建AppendMessageResult。
+                 * 这里只是将消息存储在MappedFile对应的内存映射Buffer中，并没有写入磁盘
+                 */
                 //move to add queue offset and commitlog offset
+                // 4 + 4 +4 +8
                 int pos = msgPos + 20;
                 messagesByteBuff.putLong(pos, queueOffset);
                 pos += 8;
+                // 消息在CommitLog文件中的物理偏移量，8字节
                 messagesByteBuff.putLong(pos, wroteOffset + totalMsgLen - msgLen);
                 // 8 SYSFLAG, 9 BORNTIMESTAMP, 10 BORNHOST, 11 STORETIMESTAMP
                 pos += 8 + 4 + 8 + bornHostLength;

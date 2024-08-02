@@ -36,6 +36,9 @@ public class RebalanceService extends ServiceThread {
         this.mqClientFactory = mqClientFactory;
     }
 
+    /**
+     * 默认每隔20s重平衡一次
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
@@ -45,9 +48,11 @@ public class RebalanceService extends ServiceThread {
             this.waitForRunning(realWaitInterval);
 
             long interval = System.currentTimeMillis() - lastRebalanceTimestamp;
+            // 两次重平衡最少间隔1s
             if (interval < minInterval) {
                 realWaitInterval = minInterval - interval;
             } else {
+                // 重平衡
                 boolean balanced = this.mqClientFactory.doRebalance();
                 realWaitInterval = balanced ? waitInterval : minInterval;
                 lastRebalanceTimestamp = System.currentTimeMillis();

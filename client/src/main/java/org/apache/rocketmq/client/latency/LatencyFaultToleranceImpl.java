@@ -69,6 +69,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
                 if (null == serviceDetector) {
                     continue;
                 }
+                // 探测指定brokerAddr是否可通信了
                 boolean serviceOK = serviceDetector.detect(brokerAddr, detectTimeout);
                 if (serviceOK && !brokerItem.reachableFlag) {
                     log.info(brokerItem.name + " is reachable now, then it can be used.");

@@ -419,9 +419,14 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
 
     private boolean canBatch(Message msg) {
         // produceAccumulator is full
+        // produceAccumulator是否满了 最多32M
         if (!produceAccumulator.tryAddMessage(msg)) {
             return false;
         }
+        // 以下的三种情况不支持batch发送：
+        // 1. 延迟消息
+        // 2. 重试消息
+        // 3. 分配有生产者组的消息
         // delay message do not support batch processing
         if (msg.getDelayTimeLevel() > 0 || msg.getDelayTimeMs() > 0 || msg.getDelayTimeSec() > 0 || msg.getDeliverTimeMs() > 0) {
             return false;

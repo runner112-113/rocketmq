@@ -143,6 +143,10 @@ public class HookUtils {
                     }
                 }
             }
+            /**
+             * 如果消息的延迟级别大于0，将消息的原主题名称与原消息队列ID存入消息属性中，
+             * 用延迟消息主题SCHEDULE_TOPIC_XXXX、消息队列ID更新原先消息的主题与队列，
+             */
             // Delay Delivery
             if (msg.getDelayTimeLevel() > 0) {
                 transformDelayLevelMessage(brokerController, msg);

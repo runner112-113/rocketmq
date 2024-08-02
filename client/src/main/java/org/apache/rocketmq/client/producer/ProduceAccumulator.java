@@ -43,9 +43,9 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
 public class ProduceAccumulator {
-    // totalHoldSize normal value
+    // totalHoldSize normal value 32M
     private long totalHoldSize = 32 * 1024 * 1024;
-    // holdSize normal value
+    // holdSize normal value 32k
     private long holdSize = 32 * 1024;
     // holdMs normal value
     private int holdMs = 10;
@@ -234,8 +234,10 @@ public class ProduceAccumulator {
 
     SendResult send(Message msg, MessageQueue mq,
         DefaultMQProducer defaultMQProducer) throws InterruptedException, MQBrokerException, RemotingException, MQClientException {
+        // 发送同一分区的msg
         AggregateKey partitionKey = new AggregateKey(msg, mq);
         while (true) {
+            // 获取或构建统一分区的消息聚集器
             MessageAccumulation batch = getOrCreateSyncSendBatch(partitionKey, defaultMQProducer);
             int index = batch.add(msg);
             if (index == -1) {
@@ -359,6 +361,7 @@ public class ProduceAccumulator {
                     return ret;
                 }
                 ret = this.count++;
+                // 加入message集合
                 this.messages.add(msg);
                 messagesSize.addAndGet(msg.getBody().length);
                 String msgKeys = msg.getKeys();
@@ -368,6 +371,7 @@ public class ProduceAccumulator {
             }
             synchronized (this) {
                 while (!this.closed.get()) {
+                    // 消息大于32K或者时间达到10ms
                     if (readyToSend()) {
                         this.send();
                         break;

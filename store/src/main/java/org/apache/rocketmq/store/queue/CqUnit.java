@@ -22,9 +22,13 @@ import org.apache.rocketmq.store.ConsumeQueueExt;
 import java.nio.ByteBuffer;
 
 public class CqUnit {
+    // cq的索引号
     private final long queueOffset;
+    // 消息的大小
     private final int size;
+    // CommitLog中的物理偏移量
     private final long pos;
+    // 一个批次的数量 即几个ConsumeQueue单元
     private final short batchNum;
     /**
      * Be careful, the tagsCode is reused as an address for extent file. To prevent accident mistake, we follow the

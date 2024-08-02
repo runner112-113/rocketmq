@@ -41,6 +41,25 @@ import org.apache.rocketmq.store.queue.MultiDispatchUtils;
 import org.apache.rocketmq.store.queue.QueueOffsetOperator;
 import org.apache.rocketmq.store.queue.ReferredIterator;
 
+/**
+ * 消息消费队列，消息到达CommitLog文件后，将异步转发到ConsumeQuene文件中，供消息消费者消费
+ *
+ *
+ * <p>单个ConsumeQueue文件中默认包含30万个条目，单个文件的长度
+ * 为3×106×20字节，单个ConsumeQueue文件可以看作一个ConsumeQueue
+ * 条目的数组，其下标为ConsumeQueue的逻辑偏移量，消息消费进度存
+ * 储的偏移量即逻辑偏移量。ConsumeQueue即为CommitLog文件的索引文
+ * 件，其构建机制是当消息到达CommitLog文件后，由专门的线程产生消
+ * 息转发任务，从而构建ConsumeQueue文件与Index文件</p>
+ *
+ *<p> 存储方式：
+ * /topic
+ *    /queue
+ *        /0
+ *        /1
+ *        /2
+ *        ...
+ */
 public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -784,6 +803,10 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
         queueOffsetOperator.increaseQueueOffset(topicQueueKey, messageNum);
     }
 
+    /**
+     * 第二步：依次将消息偏移量、消息长度、tag哈希码写入ByteBuffer，并根据consumeQueueOffset计算ConsumeQueue中的物理
+     * 地址，将内容追加到ConsumeQueue的内存映射文件中（本操作只追加，不刷盘），ConsumeQueue的刷盘方式固定为异步刷盘
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
 
@@ -859,6 +882,8 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
                 return mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
             }
         }
+
+        // 如果该偏移量小于minLogicOffset，则返回null，说明该消息已被删除
         return null;
     }
 
@@ -957,9 +982,9 @@ public class ConsumeQueue implements ConsumeQueueInterface, FileQueueLifeCycle {
             }
             long queueOffset = (sbr.getStartOffset() + sbr.getByteBuffer().position() - relativePos) / CQ_STORE_UNIT_SIZE;
             CqUnit cqUnit = new CqUnit(queueOffset,
-                sbr.getByteBuffer().getLong(),
-                sbr.getByteBuffer().getInt(),
-                sbr.getByteBuffer().getLong());
+                sbr.getByteBuffer().getLong(), // commitLog中的物理偏移量
+                sbr.getByteBuffer().getInt(), // 消息的大小
+                sbr.getByteBuffer().getLong()); // tagsCode的hash
 
             if (isExtAddr(cqUnit.getTagsCode())) {
                 ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();

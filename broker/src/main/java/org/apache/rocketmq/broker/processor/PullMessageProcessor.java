@@ -478,6 +478,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             return response;
         }
 
+        // 根据订阅信息构建消息过滤器
         MessageFilter messageFilter;
         if (this.brokerController.getBrokerConfig().isFilterSupportRetry()) {
             messageFilter = new ExpressionForRetryMessageFilter(subscriptionData, consumerFilterData,
@@ -537,6 +538,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
             } else {
                 SubscriptionData finalSubscriptionData = subscriptionData;
                 RemotingCommand finalResponse = response;
+                // 调用MessageStore.getMessageAsync查找消息
                 messageStore.getMessageAsync(group, topic, queueId, requestHeader.getQueueOffset(),
                         requestHeader.getMaxMsgNums(), messageFilter)
                     .thenApply(result -> {
@@ -658,6 +660,9 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 break;
         }
 
+        /**
+         * 根据主从同步延迟，如果从节点数据包含下一次拉取的偏移量，则设置下一次拉取任务的brokerId
+         */
         if (this.brokerController.getBrokerConfig().isSlaveReadEnable() && !this.brokerController.getBrokerConfig().isInBrokerContainer()) {
             // consume too slow ,redirect to another machine
             if (getMessageResult.isSuggestPullingFromSlave()) {
@@ -769,6 +774,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         boolean storeOffsetEnable = brokerAllowSuspend;
         final boolean hasCommitOffsetFlag = PullSysFlag.hasCommitOffsetFlag(requestHeader.getSysFlag());
         storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
+        // 提交客户端已经消费的位移
         if (storeOffsetEnable) {
             this.brokerController.getConsumerOffsetManager().commitOffset(clientAddress, requestHeader.getConsumerGroup(),
                 requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());

@@ -120,26 +120,34 @@ public class DefaultMessageStore implements MessageStore {
 
     public final PerfCounter.Ticks perfs = new PerfCounter.Ticks(LOGGER);
 
+    // 消息存储配置属性
     private final MessageStoreConfig messageStoreConfig;
     // CommitLog
     protected final CommitLog commitLog;
 
     protected final ConsumeQueueStoreInterface consumeQueueStore;
 
+    // ConsumeQueue文件刷盘线程
     private final FlushConsumeQueueService flushConsumeQueueService;
 
+    // 清除CommitLog文件服务。
     protected final CleanCommitLogService cleanCommitLogService;
 
+    // 清除ConsumeQueue文件服务
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
     private final CorrectLogicOffsetService correctLogicOffsetService;
 
+    // Index文件实现类
     protected final IndexService indexService;
 
+    // MappedFile分配服务
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // CommitLog消息分发，根据CommitLog文件构建ConsumeQueue、Index文件
     private ReputMessageService reputMessageService;
 
+    // 存储高可用机制
     private HAService haService;
 
     // CompactionLog
@@ -149,6 +157,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private final StoreStatsService storeStatsService;
 
+    // 消息堆内存缓存
     private final TransientStorePool transientStorePool;
 
     protected final RunningFlags runningFlags = new RunningFlags();
@@ -156,15 +165,19 @@ public class DefaultMessageStore implements MessageStore {
 
     private final ScheduledExecutorService scheduledExecutorService;
     private final BrokerStatsManager brokerStatsManager;
+    // 在消息拉取长轮询模式下的消息达到监听器
     private final MessageArrivingListener messageArrivingListener;
+    // Broker配置属性
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
     protected boolean notifyMessageArriveInBatch = false;
 
+    // 文件刷盘检测点
     private StoreCheckpoint storeCheckpoint;
     private TimerMessageStore timerMessageStore;
 
+    // CommitLog文件转发请求
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
     private RandomAccessFile lockFile;
@@ -567,6 +580,7 @@ public class DefaultMessageStore implements MessageStore {
     @Override
     public CompletableFuture<PutMessageResult> asyncPutMessage(MessageExtBrokerInner msg) {
 
+        // 前置检查，延迟消息处理等操作
         for (PutMessageHook putMessageHook : putMessageHookList) {
             PutMessageResult handleResult = putMessageHook.executeBeforePutMessage(msg);
             if (handleResult != null) {
@@ -810,6 +824,7 @@ public class DefaultMessageStore implements MessageStore {
 
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
+        // topic+queueId --> 找到对应的ConsumeQueue
         ConsumeQueueInterface consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
             minOffset = consumeQueue.getMinOffsetInQueue();
@@ -897,6 +912,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            // 从CommitLog中获取消息
                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
                             if (null == selectResult) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -911,6 +927,7 @@ public class DefaultMessageStore implements MessageStore {
                                 getResult.setColdDataSum(getResult.getColdDataSum() + sizePy);
                             }
 
+                            // 消息过滤
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -2171,6 +2188,8 @@ public class DefaultMessageStore implements MessageStore {
 
         @Override
         public void dispatch(DispatchRequest request) {
+
+             // 如果messsageIndexEnable设置为true，则调用IndexService#buildIndex构建哈希索引，否则忽略本次转发任务
             if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {
                 DefaultMessageStore.this.indexService.buildIndex(request);
             }
@@ -2781,6 +2800,7 @@ public class DefaultMessageStore implements MessageStore {
 
     class ReputMessageService extends ServiceThread {
 
+        // ReputMessageService从哪个物理偏移量开始转发消息给ConsumeQueue和Index文件
         protected volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {
@@ -2829,6 +2849,9 @@ public class DefaultMessageStore implements MessageStore {
             }
             for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
 
+                /**
+                 * 第一步：返回reputFromOffset偏移量开始的全部有效数据（CommitLog文件）。然后循环读取每一条消息
+                 */
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
 
                 if (result == null) {
@@ -2838,6 +2861,12 @@ public class DefaultMessageStore implements MessageStore {
                 try {
                     this.reputFromOffset = result.getStartOffset();
 
+                    /**
+                     * 第二步：从result返回的ByteBuffer中循环读取消息，一次读取一条，创建Dispatch Request对象。
+                     * 如果消息长度大于0，则调用doDispatch()方法。
+                     * 最终将分别调用CommitLogDispatcherBuildConsumeQueue（构建消息消费队列）、
+                     * CommitLogDispatcherBuildIndex（构建索引文件）。
+                     */
                     for (int readSize = 0; readSize < result.getSize() && reputFromOffset < getReputEndOffset() && doNext; ) {
                         DispatchRequest dispatchRequest =
                             DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false, false);
@@ -2932,6 +2961,7 @@ public class DefaultMessageStore implements MessageStore {
 
             while (!this.isStopped()) {
                 try {
+                    // 休息1ms
                     TimeUnit.MILLISECONDS.sleep(1);
                     this.doReput();
                 } catch (Throwable e) {

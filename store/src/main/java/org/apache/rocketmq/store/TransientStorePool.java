@@ -27,11 +27,19 @@ import org.apache.rocketmq.logging.org.slf4j.LoggerFactory;
 import org.apache.rocketmq.store.util.LibC;
 import sun.nio.ch.DirectBuffer;
 
+/**
+ * TransientStorePool即短暂的存储池。RocketMQ单独创建了一个DirectByteBuffer内存缓存池，用来临时存储数据，
+ * 数据先写入该内存映射中，然后由Commit线程定时将数据从该内存复制到与目标物理文件对应的内存映射中。
+ * <p><b>RokcetMQ引入该机制是为了提供一种内存锁定，将当前堆外内存一直锁定在内存中，避免被进程将内存交换到磁盘中。</b>
+ */
 public class TransientStorePool {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // availableBuffers，可在broker配置文件中通过transientStorePoolSize进行设置，默认为5
     private final int poolSize;
+    // 每个ByteBuffer的大小，默认为mappedFileSizeCommitLog，表明TransientStorePool为CommitLog文件服务
     private final int fileSize;
+    // ByteBuffer容器，双端队列
     private final Deque<ByteBuffer> availableBuffers;
     private volatile boolean isRealCommit = true;
 
@@ -43,6 +51,8 @@ public class TransientStorePool {
 
     /**
      * It's a heavy init method.
+     *
+     * 创建数量为poolSize的堆外内存，利用com.sun.jna.Library类库锁定该批内存，避免被置换到交换区，以便提高存储性能
      */
     public void init() {
         for (int i = 0; i < poolSize; i++) {
@@ -50,6 +60,8 @@ public class TransientStorePool {
 
             final long address = ((DirectBuffer) byteBuffer).address();
             Pointer pointer = new Pointer(address);
+            // 锁定内存，防止被交换
+            // 锁定后，这段内存将不会被交换到磁盘中，从而确保它始终驻留在物理内存中。这对于需要高性能访问或者安全存储敏感数据的情况非常有用
             LibC.INSTANCE.mlock(pointer, new NativeLong(fileSize));
 
             availableBuffers.offer(byteBuffer);
@@ -60,6 +72,7 @@ public class TransientStorePool {
         for (ByteBuffer byteBuffer : availableBuffers) {
             final long address = ((DirectBuffer) byteBuffer).address();
             Pointer pointer = new Pointer(address);
+            // 解锁
             LibC.INSTANCE.munlock(pointer, new NativeLong(fileSize));
         }
     }

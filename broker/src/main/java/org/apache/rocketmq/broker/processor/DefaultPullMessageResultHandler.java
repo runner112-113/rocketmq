@@ -108,6 +108,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
 
         processor.updateBroadcastPulledOffset(requestHeader.getTopic(), requestHeader.getConsumerGroup(),
             requestHeader.getQueueId(), requestHeader, channel, response, getMessageResult.getNextBeginOffset());
+        // 如果CommitLog标记为可用并且当前节点为主节点，则更新消息消费进度
         processor.tryCommitOffset(brokerAllowSuspend, requestHeader, getMessageResult.getNextBeginOffset(),
             clientAddress);
 
@@ -174,7 +175,9 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
 
                 if (brokerAllowSuspend && hasSuspendFlag) {
                     long pollingTimeMills = suspendTimeoutMillisLong;
+                    // 判断是否开启长轮询
                     if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                        // 短轮询为1s
                         pollingTimeMills = this.brokerController.getBrokerConfig().getShortPollingTimeMills();
                     }
 

@@ -165,6 +165,7 @@ public class MQFaultStrategy {
             return tpInfo.selectOneMessageQueue();
         }
 
+        // 不开启故障延迟的话，仅通过brokerFilter来过滤，当发送新的消息是就是随机选broker,因为新的消息第一次发送lastBrokerName为null
         MessageQueue mq = tpInfo.selectOneMessageQueue(brokerFilter);
         if (mq != null) {
             return mq;

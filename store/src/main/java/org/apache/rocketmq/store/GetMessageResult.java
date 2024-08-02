@@ -28,6 +28,7 @@ public class GetMessageResult {
     private final List<Long> messageQueueOffset;
 
     private GetMessageStatus status;
+    // 下一次拉取时开始的偏移量(cq的索引号)
     private long nextBeginOffset;
     private long minOffset;
     private long maxOffset;

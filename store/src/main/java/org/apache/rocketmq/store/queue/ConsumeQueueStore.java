@@ -149,6 +149,10 @@ public class ConsumeQueueStore extends AbstractConsumeQueueStore {
 
     @Override
     public void putMessagePositionInfoWrapper(DispatchRequest dispatchRequest) {
+        /**
+         * 第一步：根据消息主题与队列ID，先获取对应的ConsumeQueue文件，其逻辑比较简单，
+         * 因为每一个消息主题对应一个ConsumeQueue目录，主题下每一个消息队列对应一个文件夹，所以取出该文件夹最后的ConsumeQueue文件即可
+         */
         ConsumeQueueInterface cq = this.findOrCreateConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
         this.putMessagePositionInfoWrapper(cq, dispatchRequest);
     }

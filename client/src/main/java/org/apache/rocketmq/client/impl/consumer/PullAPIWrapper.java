@@ -110,6 +110,7 @@ public class PullAPIWrapper {
             }
 
             List<MessageExt> msgListFilterAgain = msgList;
+            // 通过TAG再次进行过滤（在服务端只是验证了TAG的哈希码）
             if (!subscriptionData.getTagsSet().isEmpty() && !subscriptionData.isClassFilterMode()) {
                 msgListFilterAgain = new ArrayList<>(msgList.size());
                 for (MessageExt msg : msgList) {
@@ -234,6 +235,8 @@ public class PullAPIWrapper {
             requestHeader.setBrokerName(mq.getBrokerName());
 
             String brokerAddr = findBrokerResult.getBrokerAddr();
+            // 如果消息过滤模式为类过滤，则需要根据主题名称、broker地址找到注册在Broker上的FilterServer地址，
+            // 从FilterServer上拉取消息，否则从Broker上拉取消息
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
                 brokerAddr = computePullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }
