@@ -26,13 +26,21 @@ import java.util.Set;
 import org.apache.rocketmq.common.filter.ExpressionType;
 
 public class SubscriptionData implements Comparable<SubscriptionData> {
+    // 过滤模式，默认全匹配
     public final static String SUB_ALL = "*";
+
+    // 是否是类过滤模式，默认为false
     private boolean classFilterMode = false;
     private String topic;
+    // 消息过滤表达式，多个用双竖线隔开，例如"TAGA|| TAGB"
     private String subString;
+    // 消息过滤标志集合，是消费端过滤时进行消息过滤的依据
     private Set<String> tagsSet = new HashSet<>();
+    // 消息过滤标志哈希码集合
     private Set<Integer> codeSet = new HashSet<>();
     private long subVersion = System.currentTimeMillis();
+
+    // 过滤类型，TAG或SQL92
     private String expressionType = ExpressionType.TAG;
 
     @JSONField(serialize = false)

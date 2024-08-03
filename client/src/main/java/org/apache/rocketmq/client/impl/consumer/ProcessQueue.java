@@ -345,7 +345,8 @@ public class ProcessQueue {
     }
 
     /**
-     * 从ProcessQueue中取出batchSize条消息
+     * 顺序消费的逻辑
+     * <p>从ProcessQueue中取出batchSize条消息
      */
     public List<MessageExt> takeMessages(final int batchSize) {
         List<MessageExt> result = new ArrayList<>(batchSize);

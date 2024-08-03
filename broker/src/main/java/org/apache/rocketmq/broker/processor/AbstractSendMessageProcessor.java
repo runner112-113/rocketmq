@@ -129,6 +129,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             return response;
         }
 
+        // 创建重试主题，重试主题名称为%RETRY%+消费组名称，从重试队列中随机选择一个队列，并构建TopicConfig主题配置信息
         String newTopic = MixAll.getRetryTopic(requestHeader.getGroup());
         int queueIdInt = this.random.nextInt(subscriptionGroupConfig.getRetryQueueNums());
 
@@ -155,6 +156,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         }
 
         // Look message from the origin message store
+        // 根据消息物理偏移量从CommitLog文件中获取消息，同时将消息的主题存入属性
         MessageExt msgExt = currentBroker.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -170,6 +172,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
 
         int delayLevel = requestHeader.getDelayLevel();
 
+        // 最大重试次数。默认16
         int maxReconsumeTimes = subscriptionGroupConfig.getRetryMaxTimes();
         if (request.getVersion() >= MQVersion.Version.V3_4_9.ordinal()) {
             Integer times = requestHeader.getMaxReconsumeTimes();
@@ -178,6 +181,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             }
         }
 
+        // 设置消息重试次数，如果消息重试次数已超过maxReconsumeTimes，再次改变newTopic主题为DLQ（"%DLQ%"），
+        // 该主题的权限为只写，说明消息一旦进入DLQ队列，RocketMQ将不负责再次调度消费了，需要人工干预
         boolean isDLQ = false;
         if (msgExt.getReconsumeTimes() >= maxReconsumeTimes
             || delayLevel < 0) {
@@ -205,6 +210,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             }
             msgExt.setDelayTimeLevel(0);
         } else {
+            // Broker端决定延迟级别
             if (0 == delayLevel) {
                 delayLevel = 3 + msgExt.getReconsumeTimes();
             }
@@ -212,6 +218,8 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
+        // 根据原先的消息创建一个新的消息对象，重试消息会拥有一个唯一消息ID（msgId）并存入CommitLog文件。
+        // 这里不会更新原先的消息，而是会将原先的主题、消息ID存入消息属性，主题名称为重试主题，其他属性与原消息保持一致
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         msgInner.setTopic(newTopic);
         msgInner.setBody(msgExt.getBody());
@@ -234,6 +242,7 @@ public abstract class AbstractSendMessageProcessor implements NettyRequestProces
         boolean succeeded = false;
 
         // Put retry topic to master message store
+        // 将消息存入CommitLog文件。
         PutMessageResult putMessageResult = masterBroker.getMessageStore().putMessage(msgInner);
         if (putMessageResult != null) {
             String commercialOwner = request.getExtFields().get(BrokerStatsManager.COMMERCIAL_OWNER);

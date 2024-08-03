@@ -208,6 +208,7 @@ public abstract class RebalanceImpl {
                     Set<MessageQueue> lockOKMQSet =
                         this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
 
+                    // 将成功锁定的消息消费队列对应的处理队列设置为锁定状态，同时更新加锁时间，
                     for (MessageQueue mq : mqs) {
                         ProcessQueue processQueue = this.processQueueTable.get(mq);
                         if (processQueue != null) {
@@ -218,6 +219,8 @@ public abstract class RebalanceImpl {
                                 processQueue.setLocked(true);
                                 processQueue.setLastLockTimestamp(System.currentTimeMillis());
                             } else {
+                                // 如果当前消费者不持该消息队列的锁，则将处理队列锁的状态设置为false，
+                                // 暂停该消息消费队列的消息拉取与消息消费。
                                 processQueue.setLocked(false);
                                 log.warn("the message queue locked Failed, Group: {} {}", this.consumerGroup, mq);
                             }
@@ -525,6 +528,10 @@ public abstract class RebalanceImpl {
         List<PullRequest> pullRequestList = new ArrayList<>();
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
+                /**
+                 * 经过消息队列重新负载（分配）后，分配到新的消息队列时，首先需要尝试向Broker发起锁定该消息队列的请求，
+                 * 如果返回加锁成功，则创建该消息队列的拉取任务，否则跳过，等待其他消费者释放该消息队列的锁，然后在下一次队列重新负载时再尝试加锁。
+                 */
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     allMQLocked = false;
@@ -556,6 +563,7 @@ public abstract class RebalanceImpl {
 
         }
 
+        // 等待其他消费者释放该消息队列的锁，然后在下一次队列重新负载时再尝试加锁
         if (!allMQLocked) {
             mQClientFactory.rebalanceLater(500);
         }

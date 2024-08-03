@@ -1639,6 +1639,7 @@ public class MQClientAPIImpl implements NameServerUpdateCallback {
         requestHeader.setMaxReconsumeTimes(maxConsumeRetryTimes);
         requestHeader.setBrokerName(brokerName);
 
+        // 同步调用 CONSUMER_SEND_MSG_BACK
         RemotingCommand response = this.remotingClient.invokeSync(MixAll.brokerVIPChannel(this.clientConfig.isVipChannelEnabled(), addr),
             request, timeoutMillis);
         assert response != null;

@@ -250,7 +250,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     /**
      * Batch consumption size
      *
-     * 消息并发消费时一次消费消息的条数，通俗点说，就是每次传入MessageListener#consumeMessage中的消息条数
+     * <p>消息消费时一次消费消息的条数，通俗点说，就是每次传入MessageListener#consumeMessage中的消息条数
      */
     private int consumeMessageBatchMaxSize = 1;
 

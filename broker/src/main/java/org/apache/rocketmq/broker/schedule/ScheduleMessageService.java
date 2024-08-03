@@ -62,22 +62,34 @@ import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_IS_
 import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_MESSAGE_TYPE;
 import static org.apache.rocketmq.broker.metrics.BrokerMetricsConstant.LABEL_TOPIC;
 
+/**
+ * 定时消息的实现类
+ *
+ * <p>ScheduleMessageService方法的调用顺序为构造方法→load()方法→start()方法。
+ */
 public class ScheduleMessageService extends ConfigManager {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
+    // 第一次调度时延迟的时间，默认为1s
     private static final long FIRST_DELAY_TIME = 1000L;
+    // 每一个延时级别调度一次后，延迟该时间间隔后再放入调度池。
     private static final long DELAY_FOR_A_WHILE = 100L;
+    // 消息发送异常后延迟该时间后再继续参与调度
     private static final long DELAY_FOR_A_PERIOD = 10000L;
     private static final long WAIT_FOR_SHUTDOWN = 5000L;
     private static final long DELAY_FOR_A_SLEEP = 10L;
 
+    // 延迟级别，将“1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h” 字符串解析成delayLevelTable，
+    // 转换后的数据结构类似{1:1000,2:5000,3:30000,...}
     private final ConcurrentSkipListMap<Integer /* level */, Long/* delay timeMillis */> delayLevelTable =
         new ConcurrentSkipListMap<>();
 
+    // 延迟级别消息消费进度
     private final ConcurrentMap<Integer /* level */, Long/* offset */> offsetTable =
         new ConcurrentHashMap<>(32);
     private final AtomicBoolean started = new AtomicBoolean(false);
     private ScheduledExecutorService deliverExecutorService;
+    // MessageStoreConfig#messageDelayLevel中最大消息延迟级别
     private int maxDelayLevel;
     private DataVersion dataVersion = new DataVersion();
     private boolean enableAsyncDeliver = false;
@@ -138,6 +150,8 @@ public class ScheduleMessageService extends ConfigManager {
             if (this.enableAsyncDeliver) {
                 this.handleExecutorService = ThreadUtils.newScheduledThreadPool(this.maxDelayLevel, new ThreadFactoryImpl("ScheduleMessageExecutorHandleThread_"));
             }
+
+            // 为每个延迟级别创建DeliverDelayedMessageTimerTask任务
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
                 Integer level = entry.getKey();
                 Long timeDelay = entry.getValue();
@@ -154,6 +168,7 @@ public class ScheduleMessageService extends ConfigManager {
                 }
             }
 
+            // 每隔10s持久化一次延迟队列的消息消费进度
             scheduledPersistService.scheduleAtFixedRate(() -> {
                 try {
                     ScheduleMessageService.this.persist();

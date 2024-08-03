@@ -26,7 +26,7 @@ public class PullRequest implements MessageRequest {
     private ProcessQueue processQueue;
     // 待拉取的MessageQueue偏移量
     private long nextOffset;
-    // 是否被锁定
+    // 是否是第一次锁定
     private boolean previouslyLocked = false;
 
     public boolean isPreviouslyLocked() {

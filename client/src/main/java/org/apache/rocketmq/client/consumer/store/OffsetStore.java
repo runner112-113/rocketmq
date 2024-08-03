@@ -34,6 +34,8 @@ public interface OffsetStore {
 
     /**
      * Update the offset,store it in memory
+     *
+     * increaseOnly：true表示offset必须大于内存中当前的消费偏移量才更新。
      */
     void updateOffset(final MessageQueue mq, final long offset, final boolean increaseOnly);
 
