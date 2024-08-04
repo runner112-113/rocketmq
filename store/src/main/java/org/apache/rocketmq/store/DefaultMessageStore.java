@@ -957,6 +957,13 @@ public class DefaultMessageStore implements MessageStore {
                     brokerStatsManager.recordDiskFallBehindSize(group, topic, queueId, fallBehind);
                 }
 
+                // maxOffsetPy:代表当前主服务器消息存储文件的最大偏移量
+                // maxPhyOffsetPulling:此次拉取消息的最大偏移量
+                // diff：对于PullMessageService线程来说，当前未被拉取到消息消费端的消息长度
+                // TOTAL_PHYSICAL_MEMORY_SIZE：RocketMQ所在服务器的总内存大小。
+                // AccessMessageInMemoryMaxRatio表示RocketMQ所能使用的最大内存比例，超过该比例，消息将被置换出内存。
+                // memory表示RocketMQ消息常驻内存的大小，超过该大小，RocketMQ会将旧的消息置换回磁盘
+                // 即 当积压的消息超过物理内存的40%，会从从节点拉取消息
                 long diff = maxOffsetPy - maxPhyOffsetPulling;
                 long memory = (long) (StoreUtil.TOTAL_PHYSICAL_MEMORY_SIZE
                     * (this.messageStoreConfig.getAccessMessageInMemoryMaxRatio() / 100.0));

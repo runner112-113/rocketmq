@@ -54,6 +54,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
     private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
     private final AtomicReference<String> masterHaAddress = new AtomicReference<>();
     private final AtomicReference<String> masterAddress = new AtomicReference<>();
+    // 从服务器向主服务器发起主从同步的拉取偏移量
     private final ByteBuffer reportOffset = ByteBuffer.allocate(REPORT_HEADER_SIZE);
     private SocketChannel socketChannel;
     private Selector selector;
@@ -66,11 +67,17 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
      */
     private long lastWriteTimestamp = System.currentTimeMillis();
 
+    // 反馈从服务器当前的复制进度，即CommitLog文件的最大偏移量。
     private long currentReportedOffset = 0;
+    // 本次已处理读缓存区的指针
     private int dispatchPosition = 0;
+    // 读缓存区，大小为4MB
     private ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
+    // 读缓存区备份，与bufferRead进行交换
     private ByteBuffer byteBufferBackup = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
     private DefaultMessageStore defaultMessageStore;
+
+    // 初始状态就是READY，启动后回去connect master server
     private volatile HAConnectionState currentState = HAConnectionState.READY;
     private FlowMonitor flowMonitor;
 
@@ -152,6 +159,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
 
     private boolean processReadEvent() {
         int readSizeZeroTimes = 0;
+        // 循环判断readByteBuffer是否还有剩余空间
         while (this.byteBufferRead.hasRemaining()) {
             try {
                 int readSize = this.socketChannel.read(this.byteBufferRead);
@@ -165,6 +173,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
                     }
                     lastReadTimestamp = System.currentTimeMillis();
                 } else if (readSize == 0) {
+                    // 如果连续3次从网络通道读取到0个字节，则结束本次读任务，返回true
                     if (++readSizeZeroTimes >= 3) {
                         break;
                     }
@@ -255,12 +264,14 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
                 SocketAddress socketAddress = NetworkUtil.string2SocketAddress(addr);
                 this.socketChannel = RemotingHelper.connect(socketAddress);
                 if (this.socketChannel != null) {
+                    // 注册OP_READ事件 并改变状态
                     this.socketChannel.register(this.selector, SelectionKey.OP_READ);
                     log.info("HAClient connect to master {}", addr);
                     this.changeCurrentState(HAConnectionState.TRANSFER);
                 }
             }
 
+            // 当前从服务器的最大偏移量
             this.currentReportedOffset = this.defaultMessageStore.getMaxPhyOffset();
 
             this.lastReadTimestamp = System.currentTimeMillis();
@@ -346,6 +357,7 @@ public class DefaultHAClient extends ServiceThread implements HAClient {
 
     private boolean transferFromMaster() throws IOException {
         boolean result;
+        // 每隔5s上报一次自己的最大偏移量
         if (this.isTimeToReportOffset()) {
             log.info("Slave report current offset {}", this.currentReportedOffset);
             result = this.reportSlaveMaxOffset(this.currentReportedOffset);

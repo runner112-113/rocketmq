@@ -56,6 +56,10 @@ public class SlaveSynchronize {
         }
     }
 
+    /**
+     * 从节点会定时执行上述同步任务，从主节点同步topic路由信息、
+     * 消息消费进度、延迟队列调度进度、消费组信息
+     */
     public void syncAll() {
         this.syncTopicConfig();
         this.syncConsumerOffset();

@@ -1153,10 +1153,14 @@ public class MQClientInstance {
         return null;
     }
 
+    /**
+     * 根据brokerId从Broker主从缓存表中获取指定的Broker名称，如果根据brokerId未找到相关条目，且onlyThisBroker为false，
+     * 则随机返回Broker中任意一个broker，否则返回null
+     */
     public FindBrokerResult findBrokerAddressInSubscribe(
         final String brokerName,
         final long brokerId,
-        final boolean onlyThisBroker
+        final boolean onlyThisBroker // 是否必须返回与brokerId的Broker对应的服务器信息
     ) {
         if (brokerName == null) {
             return null;
