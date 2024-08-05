@@ -92,13 +92,16 @@ public class RebalancePushImpl extends RebalanceImpl {
 
     @Override
     public boolean removeUnnecessaryMessageQueue(final MessageQueue mq, final ProcessQueue pq) {
+        // 顺序消费
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
             && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
 
             // commit offset immediately
+            // 先持久化 前面已经设置drop为true了不会再消费了
             this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
 
             // remove order message queue: unlock & remove
+            // unlock messageQueue
             return tryRemoveOrderMessageQueue(mq, pq);
         } else {
             this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);

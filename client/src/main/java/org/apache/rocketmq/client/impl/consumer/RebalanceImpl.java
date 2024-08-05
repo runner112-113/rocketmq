@@ -250,6 +250,7 @@ public abstract class RebalanceImpl {
                             balanced = false;
                         }
                     } else {
+                        // 客户端rebalance
                         boolean result = this.rebalanceByTopic(topic, isOrder);
                         if (!result) {
                             balanced = false;
@@ -512,6 +513,7 @@ public abstract class RebalanceImpl {
         }
 
         // remove message queues no longer belong me
+        // 此处会进行对MessageQueue的解锁
         for (Entry<MessageQueue, ProcessQueue> entry : removeQueueMap.entrySet()) {
             MessageQueue mq = entry.getKey();
             ProcessQueue pq = entry.getValue();
