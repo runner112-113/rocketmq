@@ -951,6 +951,7 @@ public class CommitLog implements Swappable {
             currOffset = mappedFile.getFileFromOffset() + mappedFile.getWrotePosition();
         }
 
+        //  isr集合数
         int needAckNums = this.defaultMessageStore.getMessageStoreConfig().getInSyncReplicas();
         boolean needHandleHA = needHandleHA(msg);
 

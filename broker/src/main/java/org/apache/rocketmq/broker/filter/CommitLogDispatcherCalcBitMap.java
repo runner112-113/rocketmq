@@ -52,6 +52,7 @@ public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
 
         try {
 
+            // 获取当前Topic下，所有的订阅请求信息
             Collection<ConsumerFilterData> filterDatas = consumerFilterManager.get(request.getTopic());
 
             if (filterDatas == null || filterDatas.isEmpty()) {
@@ -81,6 +82,7 @@ public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
                 try {
                     MessageEvaluationContext context = new MessageEvaluationContext(request.getPropertiesMap());
 
+                    // 执行判断(SQL已经提前编译过了,类似于的AST树)
                     ret = filterData.getCompiledExpression().evaluate(context);
                 } catch (Throwable e) {
                     log.error("Calc filter bit map error!commitLogOffset={}, consumer={}, {}", request.getCommitLogOffset(), filterData, e);
@@ -89,6 +91,7 @@ public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
                 log.debug("Result of Calc bit map:ret={}, data={}, props={}, offset={}", ret, filterData, request.getPropertiesMap(), request.getCommitLogOffset());
 
                 // eval true
+                // filterBitMap对应的位置为1
                 if (ret != null && ret instanceof Boolean && (Boolean) ret) {
                     consumerFilterManager.getBloomFilter().hashTo(
                         filterData.getBloomFilterData(),

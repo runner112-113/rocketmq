@@ -108,6 +108,7 @@ public class MessageStoreConfig {
     // ConsumeQueue file size,default is 30W
     private int mappedFileSizeConsumeQueue = 300000 * ConsumeQueue.CQ_STORE_UNIT_SIZE;
     // enable consume queue ext
+    // 默认不开启ConsumeQueueExt属性
     private boolean enableConsumeQueueExt = false;
     // ConsumeQueue extend file size, 48M
     private int mappedFileSizeConsumeQueueExt = 48 * 1024 * 1024;

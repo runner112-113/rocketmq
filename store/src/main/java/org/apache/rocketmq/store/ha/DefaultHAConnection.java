@@ -244,6 +244,7 @@ public class DefaultHAConnection implements HAConnection {
                             long readOffset = this.byteBufferRead.getLong(pos - 8);
                             this.processPosition = pos;
 
+                            // 从服务器反馈已拉取完成的消息偏移量
                             DefaultHAConnection.this.slaveAckOffset = readOffset;
                             if (DefaultHAConnection.this.slaveRequestOffset < 0) {
                                 DefaultHAConnection.this.slaveRequestOffset = readOffset;

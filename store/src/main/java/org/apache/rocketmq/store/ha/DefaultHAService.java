@@ -40,6 +40,9 @@ import org.apache.rocketmq.store.DefaultMessageStore;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.MessageStoreConfig;
 
+/**
+ * master上的主从监听服务
+ */
 public class DefaultHAService implements HAService {
 
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);

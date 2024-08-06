@@ -100,6 +100,8 @@ public class ExpressionMessageFilter implements MessageFilter {
 
             BitsArray bitsArray = null;
             try {
+                // 判断ConsumeQueue中的扩展属性filterBitMap中是否有当前consumerFilterData.getBloomFilterData()
+                // 即当前消费者是否订阅了该消息 对于SQL92表达式的预过滤
                 bitsArray = BitsArray.create(filterBitMap);
                 boolean ret = bloomFilter.isHit(consumerFilterData.getBloomFilterData(), bitsArray);
                 log.debug("Pull {} by bit map:{}, {}, {}", ret, consumerFilterData, bitsArray, cqExtUnit);

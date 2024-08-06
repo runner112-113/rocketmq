@@ -114,6 +114,7 @@ public class DLedgerRoleChangeHandler implements DLedgerLeaderElector.RoleChange
                 public void run() {
                     try {
                         if (System.currentTimeMillis() - lastSyncTimeMs > 10 * 1000) {
+                            // 同步元数据
                             brokerController.getSlaveSynchronize().syncAll();
                             lastSyncTimeMs = System.currentTimeMillis();
                         }
