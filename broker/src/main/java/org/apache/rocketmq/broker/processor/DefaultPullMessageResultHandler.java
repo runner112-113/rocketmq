@@ -138,6 +138,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     return null;
                 }
 
+                // 是否将消息拷贝到堆内存中
                 if (this.brokerController.getBrokerConfig().isTransferMsgByHeap()) {
                     final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId());
                     this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
@@ -147,6 +148,7 @@ public class DefaultPullMessageResultHandler implements PullMessageResultHandler
                     return response;
                 } else {
                     try {
+                        // 不经过堆 直接MappedBuffer发送
                         FileRegion fileRegion =
                             new ManyMessageTransfer(response.encodeHeader(getMessageResult.getBufferTotalSize()), getMessageResult);
                         RemotingCommand finalResponse = response;

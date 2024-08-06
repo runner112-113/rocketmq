@@ -184,7 +184,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
 
         try {
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
-            // 映射到内存的ByteBuffer
+            // 映射到内存的ByteBuffer mmap
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
             TOTAL_MAPPED_FILES.incrementAndGet();
@@ -642,7 +642,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
     /**
      * @return The max position which have valid data
      *
-     * 如果writeBuffer为空，则直接返回当前的写指针。如果writeBuffer不为空，则返回上一次提交的指针。
+     * <p>如果writeBuffer为空，则直接返回当前的写指针。如果writeBuffer不为空，则返回上一次提交的指针。
      * 在MappedFile设计中，只有提交了的数据（写入MappedByteBuffer或FileChannel中的数据）才是安全的数据
      */
     @Override
@@ -655,6 +655,12 @@ public class DefaultMappedFile extends AbstractMappedFile {
         COMMITTED_POSITION_UPDATER.set(this, pos);
     }
 
+    /**
+     * 文件预热
+     * <p>mappedByteBuffer 已经通过 mmap 映射，此时操作系统中只是记录了该文件和该 Buffer 的映射关系，
+     * 而没有映射到物理内存中。这里就通过对该 MappedFile 的每个 Page Cache 进行写入一个字节，
+     * 通过读写操作把 mmap 映射全部加载到物理内存中。
+     */
     @Override
     public void warmMappedFile(FlushDiskType type, int pages) {
         this.mappedByteBufferAccessCountSinceLastSwap++;
@@ -694,6 +700,8 @@ public class DefaultMappedFile extends AbstractMappedFile {
         log.info("mapped file warm-up done. mappedFile={}, costTime={}", this.getFileName(),
             System.currentTimeMillis() - beginTime);
 
+        // 内存锁定
+        // 该方法主要是实现文件预热后，防止把预热过的文件被操作系统调到swap空间中。当程序在次读取交换出去的数据的时候会产生缺页异常
         this.mlock();
     }
 
