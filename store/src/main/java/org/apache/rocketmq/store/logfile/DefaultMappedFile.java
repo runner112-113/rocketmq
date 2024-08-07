@@ -414,6 +414,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
                     log.error("Error occurred when force data to disk.", e);
                 }
 
+                // 更新flush位移
                 FLUSHED_POSITION_UPDATER.set(this, value);
                 this.release();
             } else {
@@ -472,6 +473,7 @@ public class DefaultMappedFile extends AbstractMappedFile {
                 byteBuffer.position(lastCommittedPosition);
                 byteBuffer.limit(writePos);
                 this.fileChannel.position(lastCommittedPosition);
+                // 写入到pageCache
                 this.fileChannel.write(byteBuffer);
                 COMMITTED_POSITION_UPDATER.set(this, writePos);
             } catch (Throwable e) {

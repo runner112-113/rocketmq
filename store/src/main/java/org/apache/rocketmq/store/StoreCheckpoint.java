@@ -33,8 +33,11 @@ public class StoreCheckpoint {
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
+    // CommitLog文件刷盘时间点
     private volatile long physicMsgTimestamp = 0;
+    // ConsumeQueue文件刷盘时间点
     private volatile long logicsMsgTimestamp = 0;
+    // Index文件刷盘时间点
     private volatile long indexMsgTimestamp = 0;
     private volatile long masterFlushedOffset = 0;
     private volatile long confirmPhyOffset = 0;
@@ -46,6 +49,7 @@ public class StoreCheckpoint {
 
         this.randomAccessFile = new RandomAccessFile(file, "rw");
         this.fileChannel = this.randomAccessFile.getChannel();
+        // 固定大小4KB
         this.mappedByteBuffer = fileChannel.map(MapMode.READ_WRITE, 0, DefaultMappedFile.OS_PAGE_SIZE);
 
         if (fileExists) {
