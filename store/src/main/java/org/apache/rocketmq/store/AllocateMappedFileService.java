@@ -35,6 +35,9 @@ import org.apache.rocketmq.store.logfile.MappedFile;
 
 /**
  * Create MappedFile in advance
+ *
+ *
+ * <p>文件预分配
  */
 public class AllocateMappedFileService extends ServiceThread {
     private static final Logger log = LoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -193,10 +196,14 @@ public class AllocateMappedFileService extends ServiceThread {
                 }
 
                 // pre write mappedFile
+                // 判断 mappedFile 大小，只有 CommitLog 才进行文件预热
+                // 预写入数据。按照系统的 pagesize 进行每个pagesize 写入一个字节数据。
+                // 为了把mmap 方式映射的文件都加载到内存中。
                 if (mappedFile.getFileSize() >= this.messageStore.getMessageStoreConfig()
                     .getMappedFileSizeCommitLog()
                     &&
                     this.messageStore.getMessageStoreConfig().isWarmMapedFileEnable()) {
+                    // 文件预热
                     mappedFile.warmMappedFile(this.messageStore.getMessageStoreConfig().getFlushDiskType(),
                         this.messageStore.getMessageStoreConfig().getFlushLeastPagesWhenWarmMapedFile());
                 }
