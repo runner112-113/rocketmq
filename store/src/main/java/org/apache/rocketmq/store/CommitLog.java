@@ -1448,6 +1448,9 @@ public class CommitLog implements Swappable {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
+    /**
+     * CommitRealTimeService线程默认每200ms将ByteBuffer新追加（wrotePosition减去commitedPosition）的数据提交到FileChannel中
+     */
     class CommitRealTimeService extends FlushCommitLogService {
 
         private long lastCommitTimestamp = 0;
@@ -1466,11 +1469,17 @@ public class CommitLog implements Swappable {
             while (!this.isStopped()) {
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitIntervalCommitLog();
 
+                // 一次提交任务至少包含的页数，如果待提交数据不足，小于该参数配置的值，将忽略本次提交任务，默认4页 16KB
                 int commitDataLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogLeastPages();
 
+                // commitDataThoroughInterval：两次真实提交的最大间隔时间，默认200ms
                 int commitDataThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogThoroughInterval();
 
+                /**
+                 * 如果距上次提交间隔超过commitDataThoroughInterval，则本次提交忽略commitLogLeastPages
+                 * 参数，也就是如果待提交数据小于指定页数，也执行提交操作
+                 */
                 long begin = System.currentTimeMillis();
                 if (begin >= (this.lastCommitTimestamp + commitDataThoroughInterval)) {
                     this.lastCommitTimestamp = begin;
@@ -1478,6 +1487,10 @@ public class CommitLog implements Swappable {
                 }
 
                 try {
+                    /**
+                     * 执行提交操作，将待提交数据提交到物理文件的内存映射内存区，如果返回false，并不代表提交失败，而是表示有数据提交
+                     * 成功了，唤醒刷盘线程执行刷盘操作。该线程每完成一次提交动作，将等待200ms再继续执行下一次提交任务
+                     */
                     boolean result = CommitLog.this.mappedFileQueue.commit(commitDataLeastPages);
                     long end = System.currentTimeMillis();
                     if (!result) {
@@ -1503,6 +1516,10 @@ public class CommitLog implements Swappable {
         }
     }
 
+    /**
+     * FlushRealTimeService线程默认每500ms将FileChannel中新追加的内存（wrotePosition减去上一次写入位置flushedPositiont），
+     * 通过调用FileChannel#force()方法将数据写入磁盘。
+     */
     class FlushRealTimeService extends FlushCommitLogService {
         private long lastFlushTimestamp = 0;
         private long printTimes = 0;
@@ -1512,16 +1529,23 @@ public class CommitLog implements Swappable {
             CommitLog.log.info(this.getServiceName() + " service started");
 
             while (!this.isStopped()) {
+                // flushCommitLogTimed：默认为false，表示使用await方法等待；如果为true，表示使用Thread.sleep方法等待
                 boolean flushCommitLogTimed = CommitLog.this.defaultMessageStore.getMessageStoreConfig().isFlushCommitLogTimed();
 
+                // FlushRealTimeService线程任务运行间隔时间
                 int interval = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushIntervalCommitLog();
+                // 一次刷盘任务至少包含页数，如果待写入数据不足，小于该参数配置的值，将忽略本次刷盘任务，默认4页
                 int flushPhysicQueueLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogLeastPages();
 
+                // flushPhysicQueueThoroughInterval：两次真实刷盘任务的最大间隔时间，默认10s
                 int flushPhysicQueueThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getFlushCommitLogThoroughInterval();
 
                 boolean printFlushProgress = false;
 
+                /**
+                 * flushPhysicQueueThoroughInterval：两次真实刷盘任务的最大间隔时间，默认10s。
+                 */
                 // Print flush progress
                 long currentTimeMillis = System.currentTimeMillis();
                 if (currentTimeMillis >= (this.lastFlushTimestamp + flushPhysicQueueThoroughInterval)) {
@@ -1531,6 +1555,7 @@ public class CommitLog implements Swappable {
                 }
 
                 try {
+                    // 执行一次刷盘任务前先等待指定时间间隔，然后执行刷盘任务
                     if (flushCommitLogTimed) {
                         Thread.sleep(interval);
                     } else {
@@ -1541,6 +1566,10 @@ public class CommitLog implements Swappable {
                         this.printFlushProgress();
                     }
 
+                    /**
+                     * 调用flush方法将内存中的数据写入磁盘，并且更新checkpoint文件的CommitLog文件更新时间戳，checkpoint文件的刷盘
+                     * 动作在刷盘ConsumeQueue线程中执行,其入口为{@link DefaultMessageStore#flushConsumeQueueService#doFlush}
+                     */
                     long begin = System.currentTimeMillis();
                     CommitLog.this.mappedFileQueue.flush(flushPhysicQueueLeastPages);
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
@@ -1591,6 +1620,7 @@ public class CommitLog implements Swappable {
     }
 
     public static class GroupCommitRequest {
+        // 刷盘点偏移量
         private final long nextOffset;
         // Indicate the GroupCommitRequest result: true or false
         private final CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
@@ -1632,7 +1662,9 @@ public class CommitLog implements Swappable {
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
+        // 同步刷盘任务暂存容器
         private volatile LinkedList<GroupCommitRequest> requestsWrite = new LinkedList<>();
+        // GroupCommitService线程每次处理的request容器
         private volatile LinkedList<GroupCommitRequest> requestsRead = new LinkedList<>();
         private final PutMessageSpinLock lock = new PutMessageSpinLock();
 
@@ -1680,6 +1712,8 @@ public class CommitLog implements Swappable {
                     req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
 
+                // 处理完所有同步刷盘任务后，更新刷盘检测点StoreCheckpoint中的physicMsg Timestamp，
+                // 但并没有执行检测点的刷盘操作，刷盘检测点的刷盘操作将在刷写消息队列文件时触发
                 long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                 if (storeTimestamp > 0) {
                     CommitLog.this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(storeTimestamp);

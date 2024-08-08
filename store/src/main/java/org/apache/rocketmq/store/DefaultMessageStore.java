@@ -351,6 +351,7 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            // 判断abort文件是否存在，正常关机的时候会删除abort文件
             boolean lastExitOK = !this.isTempFileExist();
             LOGGER.info("last shutdown {}, store path root dir: {}",
                 lastExitOK ? "normally" : "abnormally", messageStoreConfig.getStorePathRootDir());
@@ -373,6 +374,7 @@ public class DefaultMessageStore implements MessageStore {
                 setConfirmOffset(this.storeCheckpoint.getConfirmPhyOffset());
 
                 result = this.indexService.load(lastExitOK);
+                // 恢复
                 this.recover(lastExitOK);
                 LOGGER.info("message store recover end, and the max phy offset = {}", this.getMaxPhyOffset());
             }
@@ -1816,6 +1818,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private void addScheduleTask() {
 
+        // RocketMQ每隔10s调度一次cleanFilesPeriodically，检测是否需要清除过期文件
         this.scheduledExecutorService.scheduleAtFixedRate(new AbstractBrokerRunnable(this.getBrokerIdentity()) {
             @Override
             public void run0() {
@@ -2207,15 +2210,20 @@ public class DefaultMessageStore implements MessageStore {
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
+        // 通过系统参数Drocketmq.broker.diskSpaceWarningLevelRatio进行设置，默认0.90。
+        // 如果磁盘分区使用率超过该阈值，将设置磁盘为不可写，此时会拒绝写入新消息
         private final String diskSpaceWarningLevelRatio =
             System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "");
 
+        // 通过系统参数Drocketmq.broker.diskSpaceCleanForcibly-Ratio进行设置，默认0.85。
+        // 如果磁盘分区使用超过该阈值，建议立即执行过期文件删除，但不会拒绝写入新消息
         private final String diskSpaceCleanForciblyRatio =
             System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "");
         private long lastRedeleteTimestamp = 0;
 
         private final AtomicInteger manualDeleteFileSeveralTimes = new AtomicInteger();
 
+        // 表示是否需要立即执行清除过期文件的操作
         private volatile boolean cleanImmediately = false;
 
         private int forceCleanFailedTimes = 0;
@@ -2272,13 +2280,21 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 默认72h
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 删除物理文件的间隔时间，在一次清除过程中，可能需要被删除的文件不止一个，该值指定两次删除文件的间隔时间
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 在清除过期文件时，如果该文件被其他线程占用（引用次数大于0，比如读取消息），此时会阻止此次删除任务，同时在第一次试图删除该文件时记录当前时间戳，
+            // destroyMapedFileIntervalForcibly表示第一次拒绝删除之后能保留文件的最大时间，在此时间内，同样可以被拒绝删除，超过该时
+            //间后，会将引用次数设置为负数，文件将被强制删除
             int destroyMappedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
             int deleteFileBatchMax = DefaultMessageStore.this.getMessageStoreConfig().getDeleteFileBatchMax();
 
+            // 指定删除文件的时间点，RocketMQ通过deleteWhen设置每天在固定时间执行一次删除过期文件操作，默认凌晨4点
             boolean isTimeUp = this.isTimeToDelete();
+            // 检查磁盘空间是否充足，如果磁盘空间不充足，则返回true，表示应该触发过期文件删除操作
             boolean isUsageExceedsThreshold = this.isSpaceToDelete();
+            // 手工触发机制
             boolean isManualDelete = this.manualDeleteFileSeveralTimes.get() > 0;
 
             if (isTimeUp || isUsageExceedsThreshold || isManualDelete) {
@@ -2332,6 +2348,7 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         protected boolean isTimeToDelete() {
+            // 默认凌晨4点
             String when = DefaultMessageStore.this.getMessageStoreConfig().getDeleteWhen();
             if (UtilAll.isItTimeToDo(when)) {
                 DefaultMessageStore.LOGGER.info("it's time to reclaim disk space, " + when);
@@ -2341,6 +2358,11 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
+        /**
+         * 如果当前磁盘分区使用率大于diskSpaceWarningLevelRatio，应该立即启动过期文件删除操作。如果当前磁盘分区使用率大于
+         * diskSpaceCleanForciblyRatio，建议立即执行过期文件清除，如果磁盘使用率低于diskSpaceCleanForciblyRatio将恢复磁盘可写。
+         * 如果当前磁盘使用率小于diskMaxUsedSpaceRatio，则返回false，表示磁盘使用率正常，否则返回true，需要执行删除过期文件
+         */
         private boolean isSpaceToDelete() {
             cleanImmediately = false;
 
@@ -2689,6 +2711,7 @@ public class DefaultMessageStore implements MessageStore {
                 if (logicsMsgTimestamp > 0) {
                     DefaultMessageStore.this.getStoreCheckpoint().setLogicsMsgTimestamp(logicsMsgTimestamp);
                 }
+                // 刷新Checkpoint文件
                 DefaultMessageStore.this.getStoreCheckpoint().flush();
             }
         }
